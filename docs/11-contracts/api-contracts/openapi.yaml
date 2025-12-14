@@ -1,0 +1,403 @@
+openapi: 3.0.3
+info:
+  title: Manus Platform Task API
+  description: |
+    多智能体执行平台外部 API
+
+    ## 核心功能
+    - 任务创建与管理
+    - 时间线查询
+    - 证据访问与回放
+  version: 1.0.0
+  contact:
+    name: Platform Team
+
+servers:
+  - url: https://api.manus.example.com/v1
+    description: Production
+  - url: http://localhost:8000/v1
+    description: Development
+
+tags:
+  - name: Tasks
+    description: 任务管理
+  - name: Evidence
+    description: 证据访问
+  - name: Replay
+    description: 回放功能
+
+paths:
+  /tasks:
+    post:
+      tags: [Tasks]
+      summary: 创建任务
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: 任务创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/{taskId}:
+    get:
+      tags: [Tasks]
+      summary: 查询任务状态
+      operationId: getTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{taskId}/interrupt:
+    post:
+      tags: [Tasks]
+      summary: 中断任务
+      operationId: interruptTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 任务已中断
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{taskId}/resume:
+    post:
+      tags: [Tasks]
+      summary: 恢复任务
+      operationId: resumeTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeTaskRequest'
+      responses:
+        '200':
+          description: 任务已恢复
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{taskId}/timeline:
+    get:
+      tags: [Tasks]
+      summary: 获取任务时间线
+      operationId: getTaskTimeline
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 时间线数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Timeline'
+
+  /tasks/{taskId}/evidence:
+    get:
+      tags: [Evidence]
+      summary: 获取证据列表
+      operationId: getTaskEvidence
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - name: type
+          in: query
+          description: 过滤证据类型
+          schema:
+            $ref: '#/components/schemas/EvidenceType'
+        - name: stepId
+          in: query
+          description: 过滤步骤 ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 证据列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceList'
+
+  /tasks/{taskId}/replay:
+    get:
+      tags: [Replay]
+      summary: 获取回放信息
+      operationId: getReplayInfo
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - name: stepId
+          in: query
+          description: 指定步骤回放
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 回放入口信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayInfo'
+
+components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      description: 任务 ID
+      schema:
+        type: string
+
+  schemas:
+    CreateTaskRequest:
+      type: object
+      required:
+        - intent
+      properties:
+        intent:
+          type: string
+          description: 任务意图描述
+        context:
+          type: string
+          description: 补充上下文
+        constraints:
+          $ref: '#/components/schemas/Constraints'
+        priority:
+          type: string
+          enum: [low, normal, high, critical]
+          default: normal
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, interrupted]
+        intent:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/Step'
+        result:
+          $ref: '#/components/schemas/TaskResult'
+
+    Step:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [pending, waiting_deps, running, succeeded, failed]
+        capability:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    TaskResult:
+      type: object
+      properties:
+        outputs:
+          type: object
+        evidenceCount:
+          type: integer
+        metrics:
+          $ref: '#/components/schemas/Metrics'
+
+    Constraints:
+      type: object
+      properties:
+        allowedDomains:
+          type: array
+          items:
+            type: string
+        noPurchase:
+          type: boolean
+        timeBudgetMs:
+          type: integer
+        costBudgetUsd:
+          type: number
+
+    Timeline:
+      type: object
+      properties:
+        taskId:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+
+    TimelineEvent:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [step_started, step_completed, step_failed, evidence_created]
+        stepId:
+          type: string
+        details:
+          type: object
+
+    EvidenceType:
+      type: string
+      enum:
+        - screenshot
+        - video
+        - dom_snapshot
+        - network_har
+        - ui_tree
+        - console_log
+        - action_log
+        - file_artifact
+
+    EvidenceList:
+      type: object
+      properties:
+        taskId:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evidence'
+
+    Evidence:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          $ref: '#/components/schemas/EvidenceType'
+        stepId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        downloadUrl:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+
+    ReplayInfo:
+      type: object
+      properties:
+        taskId:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              stepId:
+                type: string
+              replayUrl:
+                type: string
+                format: uri
+              scriptUrl:
+                type: string
+                format: uri
+
+    ResumeTaskRequest:
+      type: object
+      properties:
+        fromStepId:
+          type: string
+          description: 从指定步骤恢复
+        userInput:
+          type: object
+          description: 用户输入（如验证码）
+
+    Metrics:
+      type: object
+      properties:
+        durationMs:
+          type: integer
+        costUsd:
+          type: number
+        tokensUsed:
+          type: integer
+        stepsCompleted:
+          type: integer
+        stepsFailed:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: 未授权
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

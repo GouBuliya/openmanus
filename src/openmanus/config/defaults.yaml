@@ -1,0 +1,43 @@
+# OpenManus 默认配置
+
+app:
+  name: openmanus
+  version: 0.1.0
+  debug: false
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  prefix: /api/v1
+
+database:
+  host: localhost
+  port: 5432
+  name: openmanus
+  user: postgres
+  password: ""
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  password: ""
+
+llm:
+  default_model: gpt-4
+  max_retries: 3
+  timeout_seconds: 60
+
+resource:
+  browser_pool_size: 5
+  mobile_pool_size: 3
+  container_pool_size: 10
+  default_lease_ttl_seconds: 300
+
+observability:
+  enabled: true
+  service_name: openmanus
+  jaeger_endpoint: http://localhost:14268/api/traces
+  prometheus_port: 9090
+  log_level: INFO
+  log_json: false
