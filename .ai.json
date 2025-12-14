@@ -1,0 +1,78 @@
+{
+  "$schema": ".ai/schemas/component.schema.json",
+  "name": "openmanus",
+  "version": "0.1.0",
+  "description": "基于 AgentScope 的多智能体执行平台",
+  "type": "package",
+  "language": "python",
+  "python_version": ">=3.13",
+
+  "interface": {
+    "entry_points": {
+      "api": "openmanus.api.rest.app:app",
+      "cli": "openmanus.cli:main"
+    },
+    "main_classes": [
+      "openmanus.core.contracts.AgentCall",
+      "openmanus.core.contracts.AgentResult",
+      "openmanus.core.contracts.Task",
+      "openmanus.core.contracts.Step",
+      "openmanus.core.contracts.Lease"
+    ],
+    "protocols": [
+      "openmanus.core.interfaces.IAgent",
+      "openmanus.core.interfaces.IScheduler",
+      "openmanus.core.interfaces.ILeaseManager",
+      "openmanus.core.interfaces.IRepository",
+      "openmanus.core.interfaces.IEventBus"
+    ]
+  },
+
+  "examples": [
+    {
+      "name": "创建任务",
+      "code": "from openmanus import Task\ntask = Task(id='task_001', tenant_id='t1', user_input='搜索商品')"
+    },
+    {
+      "name": "构建 AgentCall",
+      "code": "from openmanus.core.contracts import AgentCall, ReturnSpec, SuccessCriteria, TracingContext\ncall = AgentCall(intent='搜索', return_spec=ReturnSpec(schema_id='result'), success_criteria=SuccessCriteria(conditions=['成功']), tracing=TracingContext(task_id='t1', step_id='s1', call_id='c1'))"
+    }
+  ],
+
+  "ai_hints": {
+    "architecture": "DAG-based multi-agent orchestration with contract-first design",
+    "key_patterns": [
+      "Contract-First: 所有交互通过 Pydantic 契约",
+      "Protocol-Based: 使用 typing.Protocol 定义接口",
+      "Lease-Based: 资源访问通过租约控制",
+      "Event-Driven: 使用领域事件解耦"
+    ],
+    "common_tasks": {
+      "add_agent": "继承 OpenManusAgent，实现 _execute 方法",
+      "add_capability": "在 AgentRegistry 注册新能力",
+      "add_event": "继承 DomainEvent，定义事件类型"
+    },
+    "gotchas": [
+      "AgentCall/AgentResult 是不可变的 (frozen=True)",
+      "执行类 Agent 必须有 lease_id",
+      "Step.deps 定义 DAG 依赖关系"
+    ]
+  },
+
+  "dependencies": {
+    "core": ["agentscope", "pydantic", "fastapi"],
+    "database": ["asyncpg", "sqlalchemy", "redis"],
+    "llm": ["litellm", "openai", "anthropic"],
+    "observability": ["opentelemetry-api", "opentelemetry-sdk", "structlog"]
+  },
+
+  "commands": {
+    "install": "uv sync",
+    "dev": "uv sync --dev && uv run pre-commit install",
+    "lint": "uv run ruff check src tests",
+    "format": "uv run ruff format src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run pytest tests -v",
+    "serve": "uv run uvicorn openmanus.api.rest.app:app --reload"
+  }
+}
