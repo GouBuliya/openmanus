@@ -6,7 +6,9 @@
     - Agent异常: AgentError, AgentNotFoundError, AgentTimeoutError, AgentExecutionError
     - 资源异常: ResourceError, LeaseError, LeaseNotFoundError, LeaseExpiredError
     - 编排异常: OrchestrationError, DAGError, CyclicDependencyError, StepError
-    - LLM异常: LLMError, LLMRateLimitError, LLMQuotaExceededError
+    - LLM异常: LLMError, LLMRateLimitError, LLMQuotaExceededError, LLMProviderError,
+               LLMTimeoutError, LLMContentFilterError, LLMContextLengthError,
+               LLMModelNotAvailableError, LLMAuthenticationError, LLMInvalidRequestError
     - 验证异常: VerificationError, VerificationFailedError, ConsensusError
     - 安全异常: SecurityError, PermissionDeniedError, RiskLevelExceededError
 @DEPENDENCIES:
@@ -67,8 +69,14 @@ class AgentError(OpenManusError):
 class AgentNotFoundError(AgentError):
     """Agent 未找到"""
 
-    def __init__(self, agent_id: str) -> None:
-        super().__init__(f"Agent not found: {agent_id}", {"agent_id": agent_id})
+    def __init__(
+        self,
+        agent_id: str | None = None,
+        capability: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        msg = message or f"Agent not found: {agent_id or capability}"
+        super().__init__(msg, {"agent_id": agent_id, "capability": capability})
 
 
 class AgentTimeoutError(AgentError):
@@ -84,7 +92,15 @@ class AgentTimeoutError(AgentError):
 class AgentExecutionError(AgentError):
     """Agent 执行失败"""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "AGENT_EXECUTION_ERROR",
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message, {"error_code": error_code, "retryable": retryable})
+        self.error_code = error_code
+        self.retryable = retryable
 
 
 # =============================================================================
@@ -101,21 +117,39 @@ class ResourceError(OpenManusError):
 class LeaseError(ResourceError):
     """租约异常"""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        lease_id: str | None = None,
+    ) -> None:
+        super().__init__(message, {"lease_id": lease_id})
+        self.lease_id = lease_id
+
+
+class ResourceBusyError(ResourceError):
+    """资源忙"""
+
+    def __init__(self, resource_id: str, held_by: str | None = None) -> None:
+        super().__init__(
+            f"Resource {resource_id} is busy",
+            {"resource_id": resource_id, "held_by": held_by},
+        )
+        self.resource_id = resource_id
+        self.held_by = held_by
 
 
 class LeaseNotFoundError(LeaseError):
     """租约未找到"""
 
     def __init__(self, lease_id: str) -> None:
-        super().__init__(f"Lease not found: {lease_id}", {"lease_id": lease_id})
+        super().__init__(f"Lease not found: {lease_id}", lease_id=lease_id)
 
 
 class LeaseExpiredError(LeaseError):
     """租约已过期"""
 
     def __init__(self, lease_id: str) -> None:
-        super().__init__(f"Lease expired: {lease_id}", {"lease_id": lease_id})
+        super().__init__(f"Lease expired: {lease_id}", lease_id=lease_id)
 
 
 class LeaseAcquireError(LeaseError):
@@ -160,8 +194,20 @@ class DAGError(OrchestrationError):
 class CyclicDependencyError(DAGError):
     """DAG 存在循环依赖"""
 
-    def __init__(self, cycle: list[str]) -> None:
-        super().__init__(f"Cyclic dependency detected: {' -> '.join(cycle)}", {"cycle": cycle})
+    def __init__(self, task_id: str = "", cycle_path: list[str] | None = None) -> None:
+        cycle = cycle_path or []
+        super().__init__(
+            f"Cyclic dependency detected: {' -> '.join(cycle)}",
+            {"task_id": task_id, "cycle": cycle},
+        )
+
+
+class TaskExecutionError(OrchestrationError):
+    """任务执行失败"""
+
+    def __init__(self, task_id: str, message: str) -> None:
+        super().__init__(message, {"task_id": task_id})
+        self.task_id = task_id
 
 
 class StepError(OrchestrationError):
@@ -224,6 +270,77 @@ class LLMProviderError(LLMError):
     """LLM 供应商错误"""
 
     pass
+
+
+class LLMTimeoutError(LLMError):
+    """LLM 调用超时"""
+
+    def __init__(self, model: str, timeout_seconds: int) -> None:
+        super().__init__(
+            f"LLM call timeout after {timeout_seconds}s: {model}",
+            {"model": model, "timeout_seconds": timeout_seconds},
+        )
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+
+
+class LLMContentFilterError(LLMError):
+    """内容过滤错误"""
+
+    def __init__(self, model: str, reason: str) -> None:
+        super().__init__(
+            f"Content filtered by {model}: {reason}",
+            {"model": model, "reason": reason},
+        )
+        self.model = model
+        self.reason = reason
+
+
+class LLMContextLengthError(LLMError):
+    """上下文长度超限"""
+
+    def __init__(self, model: str, tokens: int, max_tokens: int) -> None:
+        super().__init__(
+            f"Context length exceeded for {model}: {tokens}/{max_tokens}",
+            {"model": model, "tokens": tokens, "max_tokens": max_tokens},
+        )
+        self.model = model
+        self.tokens = tokens
+        self.max_tokens = max_tokens
+
+
+class LLMModelNotAvailableError(LLMError):
+    """模型不可用"""
+
+    def __init__(self, model: str, reason: str = "unknown") -> None:
+        super().__init__(
+            f"Model not available: {model} ({reason})",
+            {"model": model, "reason": reason},
+        )
+        self.model = model
+        self.reason = reason
+
+
+class LLMAuthenticationError(LLMError):
+    """LLM 认证错误"""
+
+    def __init__(self, provider: str, message: str = "Invalid API key") -> None:
+        super().__init__(
+            f"Authentication failed for {provider}: {message}",
+            {"provider": provider},
+        )
+        self.provider = provider
+
+
+class LLMInvalidRequestError(LLMError):
+    """无效请求错误"""
+
+    def __init__(self, message: str, param: str | None = None) -> None:
+        super().__init__(
+            f"Invalid request: {message}",
+            {"param": param} if param else {},
+        )
+        self.param = param
 
 
 # =============================================================================
